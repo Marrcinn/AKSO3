@@ -2,7 +2,6 @@ section .bss
     buffor: resb 1024   ; [buffor] now is an address of allocated memory of size 1024 bytes
     res_print: resb 16
 
-%include "macro_print.asm"
 
 section .data
     SYS_EXIT equ 60
@@ -19,25 +18,31 @@ section .text
     global _start
 
 _start:
-    ; Check the number of command-line arguments
+    ; Check the number of command-line arguments.
     mov rdi, [rsp]
     cmp rdi, 3
     jne .ExitWithError
-
+    mov r9, -1;         If the second file opens, it will change to positive.
+    ;                   This information is used later when closing files.
+    mov r8, -1;         We do the same with the first file.
     ; If the second file exists, error out
     mov rax, SYS_OPEN
-    mov rdi, [rsp + 24]  ; Address of the second argument (file name)
+    mov rdi, [rsp + 24]; Address of the second argument (fileIN name).
     xor rsi, rsi        ; Flags: O_RDONLY
-    xor rdx, rdx        ; Mode: 0
     syscall
     cmp rax, -1         ; Check if file opening failed (it should fail)
-    jg .ExitWithError
+    jle .NoFirstFile
+    mov rdi, rax
+    mov rax, SYS_CLOSE
+    syscall
+    jmp .ExitWithError
+
+.NoFirstFile:
 
     ; Open the first file for reading
     mov rax, SYS_OPEN
     mov rdi, [rsp + 16]  ; Address of the first argument (file name)
     xor rsi, rsi        ; Flags: O_RDONLY
-    xor rdx, rdx        ; Mode: 0
     syscall
     cmp rax, -1         ; Check if file opening failed
     jle .ExitWithError
@@ -51,8 +56,9 @@ _start:
     mov rdx, FILE_PERMISSIONS
     syscall
     cmp rax, -1         ; Check if file creation failed
-    je .ExitWithError
     mov r9, rax        ; Save the file descriptor
+
+    je .CloseFirst
 
     ; Loop to read and write file in chunks
     mov rdi, r8         ; File descriptor of the first file
@@ -71,7 +77,6 @@ _start:
     mov r11, 0;         With r11 we will iterate over input bytes
 
 .BufforIteration:
-    print "r11 to ", r11
     cmp r10, r11;
     jle .ReadLoop
 
@@ -87,7 +92,6 @@ _start:
 .SavingCurrent:
     cmp r13, 0;
     jz .SaveLetter
-    print "current is = ", r13;
 
 
     ; Store the lower 16 bits of eax as a binary representation
@@ -103,11 +107,11 @@ _start:
 
     syscall
     mov r11, r14
-    cmp r11, r10;
-    jge .EndLoop
+
 
 .SaveLetter:
-
+    cmp r11, r10;
+    jge .EndLoop
     mov rax, SYS_WRITE;
     mov rsi, buffor
     add rsi, r11
@@ -117,10 +121,8 @@ _start:
     syscall
     mov r11,r14
 
-    print "Contents of res_print:", qword [res_print]
 
     xor r13, r13
-    print "print2 r11 to ", r11
     inc r11;
 
 
@@ -129,11 +131,16 @@ _start:
 
 
 .EndLoop:
-    ; Close the files
+
+.CloseFirst:
     mov rdi, r8         ; File descriptor of the first file
     mov rax, SYS_CLOSE
     syscall
+    cmp r9, 0;
+    jl .ExitWithError;
 
+
+.CloseSecond:
     mov rdi, r9         ; File descriptor of the second file
     mov rax, SYS_CLOSE
     syscall
