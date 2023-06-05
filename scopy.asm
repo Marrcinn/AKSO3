@@ -13,7 +13,7 @@ section .data
     SYS_CLOSE equ 3
     SYS_CHMOD equ 94
     ; File permissions: -rw-r--r--
-    FILE_PERMISSIONS equ 0644
+    FILE_PERMISSIONS equ 0o644
 
 section .text
     global _start
@@ -60,37 +60,69 @@ _start:
 
 
 .ReadLoop:
-    cmp r10, r11;
 
     mov rax, SYS_READ
     mov rsi, buffor     ; Address of the buffer
     mov rdx, 1024       ; Number of bytes to read
     syscall
     cmp rax, 0          ; Check if end of file reached
-    jle .EndLoop
+    jle .SavingCurrent
     mov r10, rax;       In r10 there is number of bytes read.
     mov r11, 0;         With r11 we will iterate over input bytes
 
 .BufforIteration:
+    print "r11 to ", r11
     cmp r10, r11;
     jle .ReadLoop
-    xor rax, rax
-    mov al, byte [buffor+r11]
-    ; print "Char is   ", rax
-    ; print "Current is ", r13
-    cmp byte [buffor+r11], 's';
 
+    cmp byte [buffor+r11], 's';
+    je .SavingCurrent
+    cmp byte [buffor+r11], 'S';
     je .SavingCurrent
     inc r13;
     inc r11;
-
     jmp .BufforIteration
 
 
 .SavingCurrent:
+    cmp r13, 0;
+    jz .SaveLetter
     print "current is = ", r13;
-    inc r11;
+
+
+    ; Store the lower 16 bits of eax as a binary representation
+    mov word[res_print], r13w
+
+
+    mov r14, r11
+    mov rax, SYS_WRITE;
+    mov rsi, res_print
+    mov rdi, r9
+    mov rdx, 2
+    mov r14, r11;
+
+    syscall
+    mov r11, r14
+    cmp r11, r10;
+    jge .EndLoop
+
+.SaveLetter:
+
+    mov rax, SYS_WRITE;
+    mov rsi, buffor
+    add rsi, r11
+    mov rdi, r9
+    mov rdx, 1
+    mov r14, r11
+    syscall
+    mov r11,r14
+
+    print "Contents of res_print:", qword [res_print]
+
     xor r13, r13
+    print "print2 r11 to ", r11
+    inc r11;
+
 
     jmp .BufforIteration
 
